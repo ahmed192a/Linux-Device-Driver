@@ -73,6 +73,7 @@ MODULE_PARM_DESC(major_num, "The major number of the device driver");
 dev_t dev_num; // Global variable to store the device number
 struct cdev character_device; // Global variable to store the character device structure
 struct class *dev_class; // Global variable to store the device class structure
+struct device *dev_device; // Global variable to store the device structure
 
 struct file_operations helloworld_fops={
     .owner = THIS_MODULE,       // Owner of the module - THIS_MODULE is a macro that is defined in the linux/module.h file
@@ -149,7 +150,16 @@ static int __init hellodriver_init(void)
         return PTR_ERR(dev_class);
     }
     // create the device file - this is the device driver
-    device_create(dev_class, NULL, dev_num, NULL, "helloworld");
+    dev_device  = device_create(dev_class, NULL, dev_num, NULL, "helloworld");
+    if (IS_ERR(dev_device))  // if the device is not created successfully
+    {
+        // unregister the device number
+        class_destroy(dev_class);
+        cdev_del(&character_device);
+        unregister_chrdev_region(dev_num, 1);
+        printk(KERN_ALERT "Failed to create the device\n");
+        return PTR_ERR(dev_device);
+    }
     printk(KERN_INFO "Device driver created successfully\n");
     /*************************************************************************************************/
     /* Step 4: Print the module meta information */
@@ -178,12 +188,12 @@ static void __exit hellodriver_exit(void)
 
     // remove the device from the system - this is the device driver
     cdev_del(&character_device);
-    // unregister the device number - this is the device driver
-    unregister_chrdev_region(dev_num, 1);
     // destroy the device file - this is the device driver
     device_destroy(dev_class, dev_num);
     // destroy the device class - this is the device driver
     class_destroy(dev_class);
+    // unregister the device number - this is the device driver
+    unregister_chrdev_region(dev_num, 1);
 
     printk(KERN_INFO "Hello World Device Driver has been unloaded\n");
 
