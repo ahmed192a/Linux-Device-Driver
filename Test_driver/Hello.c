@@ -14,59 +14,15 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 
+#define BUFFER_SIZE 256
 /******************************************************************************/
 /*                     Function Declarations                                  */
 /******************************************************************************/
-/**
- * @brief The init function - called when the module is loaded
- * @return 0 on success, negative error code on failure
- */
 static int __init hellodriver_init(void);
-
-/**
- * @brief The exit function - called when the module is unloaded
- */
 static void __exit hellodriver_exit(void);
-
-/**
- * @brief device open function 
- * 
- * @param inode     the inode of the device - unused
- * @param file      the file structure of the device - contains the file operations
- * 
- * @return int    0 on success, negative error code on failure
- */
 static int device_open(struct inode *inode, struct file *file);
-
-/**
- * @brief device close function 
- * 
- * @param inode     the inode of the device - unused
- * @param file      the file structure of the device - contains the file operations
- * @return int      0 on success, negative error code on failure
- */
 static int device_release(struct inode *inode, struct file *file);
-
-/**
- * @brief device read function 
- * 
- * @param file      the file structure of the device - contains the file operations
- * @param buf       the buffer to read into
- * @param count     the number of bytes to read
- * @param ppos      the current position in the file
- * @return ssize_t  the number of bytes read, or negative error code on failure
- */
 static ssize_t device_read(struct file *file, char __user *buf, size_t count, loff_t *ppos);
-
-/**
- * @brief device write function 
- * 
- * @param file      the file structure of the device - contains the file operations
- * @param buf       the buffer to write from
- * @param count     the number of bytes to write
- * @param ppos      the current position in the file
- * @return ssize_t  the number of bytes written, or negative error code on failure
- */
 static ssize_t device_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos);
 
 /******************************************************************************/
@@ -107,7 +63,7 @@ struct file_operations helloworld_fops={
     .read = device_read,        // Read function of the device driver - device_read is a function defined in the file Hello.c
     .write = device_write       // Write function of the device driver - device_write is a function defined in the file Hello.c
 }; // Structure to hold the file operations of the device driver
-
+static unsigned char buffer[BUFFER_SIZE] = "This is the hello world device driver\n"; // Global variable to store the data to be read from the device
 
 
 /************************************************************************************************/
@@ -121,6 +77,10 @@ module_exit(hellodriver_exit);  // Register the exit function with the kernel
 /******************************************************************************/
 /*                      Function Definitions                                  */
 /******************************************************************************/
+/**
+ * @brief The init function - called when the module is loaded
+ * @return 0 on success, negative error code on failure
+ */
 static int __init hellodriver_init(void)
 {
     int i = 0;          // Loop counter
@@ -209,6 +169,9 @@ static int __init hellodriver_init(void)
     return 0;
 }
 
+/**
+ * @brief The exit function - called when the module is unloaded
+ */
 static void __exit hellodriver_exit(void)
 {
     int i = 0;
@@ -228,6 +191,14 @@ static void __exit hellodriver_exit(void)
     printk(KERN_INFO "-----------------------------------------------------\n");
 }
 
+/**
+ * @brief device open function 
+ * 
+ * @param inode     the inode of the device - unused
+ * @param file      the file structure of the device - contains the file operations
+ * 
+ * @return int    0 on success, negative error code on failure
+ */
 static int device_open(struct inode *inode, struct file *file)
 {
     // print seperator
@@ -242,6 +213,13 @@ static int device_open(struct inode *inode, struct file *file)
     return 0;
 }
 
+/**
+ * @brief device close function 
+ * 
+ * @param inode     the inode of the device - unused
+ * @param file      the file structure of the device - contains the file operations
+ * @return int      0 on success, negative error code on failure
+ */
 static int device_release(struct inode *inode, struct file *file)  {
     // print seperator
     printk(KERN_INFO "-----------------------------------------------------\n");
@@ -255,6 +233,15 @@ static int device_release(struct inode *inode, struct file *file)  {
     return 0;
 }
 
+/**
+ * @brief device read function 
+ * 
+ * @param file      the file structure of the device - contains the file operations
+ * @param buf       the buffer to read into
+ * @param count     the number of bytes to read
+ * @param ppos      the current position in the file
+ * @return ssize_t  the number of bytes read, or negative error code on failure
+ */
 static ssize_t device_read(struct file *file, char __user *buf, size_t count, loff_t *ppos){
     // print seperator
     printk(KERN_INFO "-----------------------------------------------------\n");
@@ -265,9 +252,29 @@ static ssize_t device_read(struct file *file, char __user *buf, size_t count, lo
     printk(KERN_INFO "Device read successfully\n");
     // print seperator
     printk(KERN_INFO "-----------------------------------------------------\n");
-    return 0;
+    // check if the count and pposs are valid
+    if (count + *ppos >= sizeof(buffer))
+        count = sizeof(buffer) - *ppos;
+
+
+    // copy the data from the kernel space to the user space
+    if (copy_to_user(buf, &buffer[*ppos], count))
+        return -EFAULT;
+    
+    *ppos += count;
+
+    return count;
 }
 
+/**
+ * @brief device write function 
+ * 
+ * @param file      the file structure of the device - contains the file operations
+ * @param buf       the buffer to write from
+ * @param count     the number of bytes to write
+ * @param ppos      the current position in the file
+ * @return ssize_t  the number of bytes written, or negative error code on failure
+ */
 static ssize_t device_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos){
     // print seperator
     printk(KERN_INFO "-----------------------------------------------------\n");
@@ -278,5 +285,18 @@ static ssize_t device_write(struct file *file, const char __user *buf, size_t co
     printk(KERN_INFO "Device write successfully\n");
     // print seperator
     printk(KERN_INFO "-----------------------------------------------------\n");
-    return 0;
+    // // check if the count and pposs are valid
+    // if (count + *ppos > sizeof(buffer))
+    //     count = sizeof(buffer) - *ppos;
+
+    unsigned char data[10]={0};
+    
+    // copy the data from the user space to the kernel space
+    if (copy_from_user(data, buf, count))
+        return -EFAULT;
+    
+    printk(KERN_INFO "data: %c\n", data[0]);
+    
+    
+    return count;
 }
